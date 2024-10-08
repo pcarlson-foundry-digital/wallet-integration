@@ -1,101 +1,156 @@
-import Image from "next/image";
+"use client";
+
+import { useState, useEffect } from 'react';
+import { web3Accounts, web3Enable, web3FromAddress } from '@polkadot/extension-dapp';
+import { ApiPromise, WsProvider } from '@polkadot/api';
+
+// Enable injected extensions
+async function enableInjected(): Promise<void> {
+  const allInjected = await web3Enable('my-cool-dapp');
+  if (allInjected.length === 0) {
+    throw new Error('No injected extensions available.');
+  }
+}
+
+// Get all accounts from the injected extension
+async function getAllAccounts(): Promise<{ address: string; meta: { name?: string; source: string } }[]> {
+  const allAccounts = await web3Accounts();
+  return allAccounts;
+}
+
+// Create a new instance of the Polkadot API
+async function createApi(): Promise<ApiPromise> {
+  const provider = new WsProvider('wss://test.finney.opentensor.ai:443');
+  const api = await ApiPromise.create({ provider });
+  return api;
+}
+
+async function addStake(api: ApiPromise, address: string, hotkey: string, desiredAmount: number, currentStake: number) {
+  try {
+    // Get the injector for signing the transaction
+    const injector = await web3FromAddress(address);
+
+    // Calculate the difference between desired amount and current stake
+    const stakeAmount = desiredAmount - currentStake;
+
+    // Create the transaction for adding stake
+    const tx = api.tx.subtensorModule.addStake(hotkey, stakeAmount.toString()); // Convert to string as required
+
+    // Sign and send the transaction
+    await tx.signAndSend(address, { signer: injector.signer }, ({ status }) => {
+      console.log('Transaction status:', status.toString());
+      if (status.isFinalized) {
+        console.log('Stake added successfully!');
+      }
+    });
+  } catch (error) {
+    console.error('Error adding stake:', error);
+  }
+}
+
+// Get account balance
+async function getBalance(api: ApiPromise, address: string) {
+  try {
+    // Fetch the account information from the blockchain
+    const accountInfo = await api.query.system.account(address);
+    
+    // Log the full response to troubleshoot
+    console.log('Account Info:', accountInfo.toHuman());
+
+    const { data: { free } } = accountInfo;  // Destructure to get the free balance
+    
+    // Shift decimal 9 places to the left to get the balance in TAO
+    const freeInTao = free.toBigInt() / BigInt(10 ** 9); // Convert free balance to BigInt and divide by 10^9
+    
+    // Log the balance in TAO
+    console.log(`Balance in TAO: ${freeInTao}`);
+    
+    // Return the formatted balance with the τ symbol (lowercase tau letter)
+    return `${freeInTao} τ`; // TAO symbol as the unit
+  } catch (error) {
+    console.error('Error fetching balance:', error);
+    return 'Error fetching balance';
+  }
+}
+
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="https://nextjs.org/icons/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+  const [status, setStatus] = useState<string>('Loading...');
+  const [accounts, setAccounts] = useState<{ address: string; meta: { name?: string; source: string } }[]>([]);
+  const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
+  const [balance, setBalance] = useState<string>('');
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="https://nextjs.org/icons/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+  // Fetch accounts and balance after enabling injected extensions
+  useEffect(() => {
+    const fetchAccountsAndBalance = async () => {
+      try {
+        await enableInjected();  // Enable the wallet extension
+        const allAccounts = await getAllAccounts(); // Fetch accounts
+        setAccounts(allAccounts);
+
+        if (allAccounts.length > 0) {
+          setSelectedAccount(allAccounts[0].address); // Default to first account
+          setStatus('Account found');
+        } else {
+          setStatus('No accounts found.');
+        }
+      } catch (error) {
+        console.error('Failed to fetch accounts:', error);
+        setStatus('Failed to fetch accounts.');
+      }
+    };
+
+    fetchAccountsAndBalance();
+  }, []); // Run only once on component mount
+
+  // Fetch balance whenever a new account is selected
+  useEffect(() => {
+    const fetchBalance = async () => {
+      if (selectedAccount) {
+        const api = await createApi();
+        const accountBalance = await getBalance(api, selectedAccount); // Get balance of selected account
+        setBalance(accountBalance); // Set balance in state
+      }
+    };
+
+    if (selectedAccount) {
+      fetchBalance();
+    }
+  }, [selectedAccount]); // Re-run whenever selectedAccount changes
+
+  const handleAccountSelect = (accountAddress: string) => {
+    setSelectedAccount(accountAddress);
+  };
+
+  return (
+    <div>
+      <h1>Wallet Integration</h1>
+      <div>
+        <h2>Status</h2>
+        <p>{status}</p>
+      </div>
+      <div>
+        <h2>Accounts</h2>
+        {accounts.length > 0 ? (
+          <ul>
+            {accounts.map((account, index) => (
+              <li key={index} onClick={() => handleAccountSelect(account.address)}>
+                <strong>{account.meta?.name || 'Unnamed Account'}</strong> - {account.address}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p>No accounts found.</p>
+        )}
+      </div>
+      <div>
+        <h2>Balance</h2>
+        {balance ? (
+          <p>{`Balance: ${balance}`}</p> // Display balance
+        ) : (
+          <p>Loading balance...</p>
+        )}
+      </div>
     </div>
   );
 }
