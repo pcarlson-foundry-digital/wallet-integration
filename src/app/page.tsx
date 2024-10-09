@@ -7,6 +7,8 @@ export default function Home() {
   const [accounts, setAccounts] = useState<{ address: string; meta: { name?: string; source: string } }[]>([]);
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
   const [balance, setBalance] = useState<string>('');
+  const [hotkey, setHotkey] = useState<string>('');
+  const [stakeAmount, setStakeAmount] = useState<string>('');
 
   useEffect(() => {
     const initializeWallet = async () => {
@@ -47,7 +49,8 @@ export default function Home() {
           const accountInfo = await api.query.system.account(selectedAccount);
           const { data: { free } } = accountInfo;
           const freeInTao = free.toBigInt() / BigInt(10 ** 9);
-          setBalance(`${freeInTao} τ`);
+          setBalance(`${freeInTao}`);
+          setStakeAmount(`${freeInTao}`); // Set default stake amount to balance
         } catch (error) {
           console.error('Error fetching balance:', error);
           setBalance('Error fetching balance');
@@ -65,7 +68,7 @@ export default function Home() {
   };
 
   const handleAddStake = async () => {
-    if (selectedAccount) {
+    if (selectedAccount && hotkey && stakeAmount) {
       try {
         const { ApiPromise, WsProvider } = await import('@polkadot/api');
         const { web3FromAddress } = await import('@polkadot/extension-dapp');
@@ -75,17 +78,13 @@ export default function Home() {
         
         const injector = await web3FromAddress(selectedAccount);
         
-        // These values should be dynamically set or passed as parameters
-        const hotkey = 'your_hotkey_here';
-        const desiredAmount = 1000;
-        const currentStake = 500;
-        const stakeAmount = desiredAmount - currentStake;
-
-        const tx = api.tx.subtensorModule.addStake(hotkey, stakeAmount.toString());
+        const tx = api.tx.subtensorModule.addStake(hotkey, stakeAmount);
         await tx.signAndSend(selectedAccount, { signer: injector.signer }, ({ status }) => {
           console.log('Transaction status:', status.toString());
           if (status.isFinalized) {
             console.log('Stake added successfully!');
+            // Refresh balance after staking
+            fetchBalance();
           }
         });
       } catch (error) {
@@ -95,35 +94,61 @@ export default function Home() {
   };
 
   return (
-    <div>
-      <h1>Wallet Integration</h1>
-      <div>
-        <h2>Status</h2>
-        <p>{status}</p>
+    <div className="container mx-auto p-4">
+      <h1 className="text-2xl font-bold mb-4">Wallet Integration</h1>
+      <div className="mb-4">
+        <h2 className="text-xl font-semibold mb-2">Status</h2>
+        <p className="text-gray-700">{status}</p>
       </div>
-      <div>
-        <h2>Accounts</h2>
+      <div className="mb-4">
+        <h2 className="text-xl font-semibold mb-2">Accounts</h2>
         {accounts.length > 0 ? (
-          <ul>
+          <ul className="space-y-2">
             {accounts.map((account, index) => (
-              <li key={index} onClick={() => handleAccountSelect(account.address)}>
+              <li 
+                key={index} 
+                onClick={() => handleAccountSelect(account.address)}
+                className="p-2 border rounded cursor-pointer hover:bg-gray-100"
+              >
                 <strong>{account.meta?.name || 'Unnamed Account'}</strong> - {account.address}
               </li>
             ))}
           </ul>
         ) : (
-          <p>No accounts found.</p>
+          <p className="text-gray-700">No accounts found.</p>
+        )}
+      </div>
+      <div className="mb-4">
+        <h2 className="text-xl font-semibold mb-2">Balance</h2>
+        {balance ? (
+          <p className="text-gray-700">{`Balance: ${balance} τ`}</p>
+        ) : (
+          <p className="text-gray-700">Loading balance...</p>
         )}
       </div>
       <div>
-        <h2>Balance</h2>
-        {balance ? (
-          <p>{`Balance: ${balance}`}</p>
-        ) : (
-          <p>Loading balance...</p>
-        )}
+        <h2 className="text-xl font-semibold mb-2">Add Stake</h2>
+        <input
+          type="text"
+          placeholder="Hotkey"
+          value={hotkey}
+          onChange={(e) => setHotkey(e.target.value)}
+          className="border rounded p-2 mr-2 mb-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+        <input
+          type="number"
+          placeholder="Stake Amount"
+          value={stakeAmount}
+          onChange={(e) => setStakeAmount(e.target.value)}
+          className="border rounded p-2 mr-2 mb-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+        <button 
+          onClick={handleAddStake} 
+          className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          Add Stake
+        </button>
       </div>
-      <button onClick={handleAddStake}>Add Stake</button>
     </div>
   );
 }
