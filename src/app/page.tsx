@@ -54,7 +54,7 @@ export default function Home() {
     if (selectedAccount && hotkey) {
       try {
         const { ApiPromise, WsProvider } = await import('@polkadot/api');
-        const provider = new WsProvider('wss://test.finney.opentensor.ai:443');
+        const provider = new WsProvider(process.env.NEXT_PUBLIC_PROVIDER);
         const api = await ApiPromise.create({ provider });
         
         const res = await api.query.subtensorModule.stake(hotkey, selectedAccount);
@@ -75,7 +75,7 @@ export default function Home() {
     if (selectedAccount) {
       try {
         const { ApiPromise, WsProvider } = await import('@polkadot/api');
-        const provider = new WsProvider('wss://test.finney.opentensor.ai:443');
+        const provider = new WsProvider(process.env.NEXT_PUBLIC_PROVIDER);
         const api = await ApiPromise.create({ provider });
   
         const accountInfo = await api.query.system.account(selectedAccount);
@@ -128,7 +128,7 @@ export default function Home() {
         const { ApiPromise, WsProvider } = await import('@polkadot/api');
         const { web3FromAddress } = await import('@polkadot/extension-dapp');
 
-        const provider = new WsProvider('wss://test.finney.opentensor.ai:443');
+        const provider = new WsProvider(process.env.NEXT_PUBLIC_PROVIDER);
         const api = await ApiPromise.create({ provider });
         
         const injector = await web3FromAddress(selectedAccount);
