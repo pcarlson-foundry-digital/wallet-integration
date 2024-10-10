@@ -28,13 +28,16 @@ export default function Home() {
         
         const allInjected = await web3Enable('foundry-wallet-integration');
         if (allInjected.length === 0) {
-          throw new Error('No injected extensions available.');
+          setStatus('No wallet extension found');
+          return;
         }
 
         const allAccounts = await web3Accounts();
         setAccounts(allAccounts);
 
-        if (allAccounts.length > 0) {
+        if (allInjected.length !== 0 && allAccounts.length === 0) {
+          location.reload();
+        } else if (allAccounts.length > 0) {
           setSelectedAccount(allAccounts[0].address);
           setStatus('Account found');
         } else {
