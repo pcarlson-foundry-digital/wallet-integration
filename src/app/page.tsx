@@ -7,7 +7,10 @@ export default function Home() {
   const [accounts, setAccounts] = useState<{ address: string; meta: { name?: string; source: string } }[]>([]);
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
   const [balance, setBalance] = useState<string>('');
-  const [hotkey, setHotkey] = useState<string>('');
+  const [hotkey, setHotkey] = useState<string>(() => {
+    const envValue = process.env.NEXT_PUBLIC_VALIDATOR_ADDRESS;
+    return typeof envValue === 'string' ? envValue : '';
+  });
   const [stakeAmount, setStakeAmount] = useState<string>('');
 
   useEffect(() => {
@@ -67,7 +70,7 @@ export default function Home() {
     setSelectedAccount(accountAddress);
   };
 
-  const handleAddStake = async () => {
+  const handleStakeAction = async (action: 'add' | 'remove') => {
     if (selectedAccount && hotkey && stakeAmount) {
       try {
         const { ApiPromise, WsProvider } = await import('@polkadot/api');
@@ -78,17 +81,20 @@ export default function Home() {
         
         const injector = await web3FromAddress(selectedAccount);
         
-        const tx = api.tx.subtensorModule.addStake(hotkey, stakeAmount);
+        const tx = action === 'add' 
+          ? api.tx.subtensorModule.addStake(hotkey, stakeAmount)
+          : api.tx.subtensorModule.removeStake(hotkey, stakeAmount);
+
         await tx.signAndSend(selectedAccount, { signer: injector.signer }, ({ status }) => {
           console.log('Transaction status:', status.toString());
           if (status.isFinalized) {
-            console.log('Stake added successfully!');
-            // Refresh balance after staking
+            console.log(`Stake ${action === 'add' ? 'added' : 'removed'} successfully!`);
+            // Refresh balance after staking action
             fetchBalance();
           }
         });
       } catch (error) {
-        console.error('Error adding stake:', error);
+        console.error(`Error ${action === 'add' ? 'adding' : 'removing'} stake:`, error);
       }
     }
   };
@@ -127,14 +133,15 @@ export default function Home() {
         )}
       </div>
       <div>
-        <h2 className="text-xl font-semibold mb-2">Add Stake</h2>
+        <h2 className="text-xl font-semibold mb-2">Stake Management</h2>
         <input
           type="text"
           placeholder="Hotkey"
           value={hotkey}
           onChange={(e) => setHotkey(e.target.value)}
-          className="border rounded p-2 mr-2 mb-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="border w-full rounded p-2 mr-2 mb-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
+        <div className="flex space-x-2">
         <input
           type="number"
           placeholder="Stake Amount"
@@ -142,12 +149,19 @@ export default function Home() {
           onChange={(e) => setStakeAmount(e.target.value)}
           className="border rounded p-2 mr-2 mb-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
-        <button 
-          onClick={handleAddStake} 
-          className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          Add Stake
-        </button>
+          <button 
+            onClick={() => handleStakeAction('add')} 
+            className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            Add Stake
+          </button>
+          <button 
+            onClick={() => handleStakeAction('remove')} 
+            className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500"
+          >
+            Remove Stake
+          </button>
+        </div>
       </div>
     </div>
   );
