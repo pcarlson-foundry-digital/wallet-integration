@@ -19,7 +19,6 @@ export default function Home() {
     removeStake: false,
     removeMaxStake: false
   });
-  const [stakeAmountError, setStakeAmountError] = useState<string>('');
 
   useEffect(() => {
     const initializeWallet = async () => {
@@ -113,10 +112,8 @@ export default function Home() {
   const validateStakeAmount = (amount: string): boolean => {
     const numAmount = parseFloat(amount);
     if (isNaN(numAmount) || numAmount < 1) {
-      setStakeAmountError('Minimum stake amount is 1 TAO');
       return false;
     }
-    setStakeAmountError('');
     return true;
   };
 
