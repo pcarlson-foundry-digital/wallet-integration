@@ -80,17 +80,23 @@ export default function Home() {
         const api = await ApiPromise.create({ provider });
         
         const injector = await web3FromAddress(selectedAccount);
+
+        const taoAmountBigInt = BigInt(Math.floor(parseFloat(stakeAmount) * 1e9));
         
         const tx = action === 'add' 
-          ? api.tx.subtensorModule.addStake(hotkey, stakeAmount)
+          ? api.tx.subtensorModule.addStake(hotkey, taoAmountBigInt)
           : api.tx.subtensorModule.removeStake(hotkey, stakeAmount);
 
-        await tx.signAndSend(selectedAccount, { signer: injector.signer }, ({ status }) => {
+        await tx.signAndSend(selectedAccount, { signer: injector.signer }, ({ status, dispatchError }) => {
           console.log('Transaction status:', status.toString());
-          if (status.isFinalized) {
+          if (status.isFinalized && !dispatchError) {
             console.log(`Stake ${action === 'add' ? 'added' : 'removed'} successfully!`);
+            console.log(status.asFinalized.toString())
             // Refresh balance after staking action
             fetchBalance();
+          }
+          if (dispatchError) {
+            console.error(`Dispatch Error: ${dispatchError.toString()}`);
           }
         });
       } catch (error) {
