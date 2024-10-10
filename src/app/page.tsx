@@ -12,6 +12,7 @@ export default function Home() {
     return typeof envValue === 'string' ? envValue : '';
   });
   const [stakeAmount, setStakeAmount] = useState<string>('');
+  const [currentStake, setCurrentStake] = useState<number>(0);
 
   useEffect(() => {
     const initializeWallet = async () => {
@@ -41,36 +42,64 @@ export default function Home() {
     initializeWallet();
   }, []);
 
-  useEffect(() => {
-    const fetchBalance = async () => {
-      if (selectedAccount) {
-        try {
-          const { ApiPromise, WsProvider } = await import('@polkadot/api');
-          const provider = new WsProvider('wss://test.finney.opentensor.ai:443');
-          const api = await ApiPromise.create({ provider });
-
-          const accountInfo = await api.query.system.account(selectedAccount);
-          const { data: { free } } = accountInfo;
-          const freeInTao = free.toBigInt() / BigInt(10 ** 9);
-          setBalance(`${freeInTao}`);
-          setStakeAmount(`${freeInTao}`); // Set default stake amount to balance
-        } catch (error) {
-          console.error('Error fetching balance:', error);
-          setBalance('Error fetching balance');
+  const fetchStakeAmount = async () => {
+    if (selectedAccount && hotkey) {
+      try {
+        const { ApiPromise, WsProvider } = await import('@polkadot/api');
+        const provider = new WsProvider('wss://test.finney.opentensor.ai:443');
+        const api = await ApiPromise.create({ provider });
+        
+        const res = await api.query.subtensorModule.stake(hotkey, selectedAccount);
+        if (res.isEmpty) {
+          setCurrentStake(0);
+        } else {
+          const amount = parseFloat(res.toString()) / 1000000000;
+          setCurrentStake(amount);
         }
+      } catch (error) {
+        console.error('Error fetching stake amount:', error);
       }
-    };
+    }
+  };
+
+  const fetchBalance = async () => {
+    if (selectedAccount) {
+      try {
+        const { ApiPromise, WsProvider } = await import('@polkadot/api');
+        const provider = new WsProvider('wss://test.finney.opentensor.ai:443');
+        const api = await ApiPromise.create({ provider });
+
+        const accountInfo = await api.query.system.account(selectedAccount);
+        const { data: { free } } = accountInfo;
+        const freeInTao = free.toBigInt() / BigInt(10 ** 9);
+        setBalance(`${freeInTao}`);
+        setStakeAmount(`${freeInTao}`); // Set default stake amount to balance
+      } catch (error) {
+        console.error('Error fetching balance:', error);
+        setBalance('Error fetching balance');
+      }
+    }
+  };
+
+  useEffect(() => {
+    fetchBalance()
 
     if (selectedAccount) {
       fetchBalance();
     }
   }, [selectedAccount]);
 
+  useEffect(() => {
+    if (selectedAccount && hotkey) {
+      fetchStakeAmount();
+    }
+  }, [selectedAccount, hotkey]);
+
   const handleAccountSelect = (accountAddress: string) => {
     setSelectedAccount(accountAddress);
   };
 
-  const handleStakeAction = async (action: 'add' | 'remove') => {
+  const handleStakeAction = async (action: 'add' | 'remove' | 'removeMax') => {
     if (selectedAccount && hotkey && stakeAmount) {
       try {
         const { ApiPromise, WsProvider } = await import('@polkadot/api');
@@ -80,12 +109,17 @@ export default function Home() {
         const api = await ApiPromise.create({ provider });
         
         const injector = await web3FromAddress(selectedAccount);
-
-        const taoAmountBigInt = BigInt(Math.floor(parseFloat(stakeAmount) * 1e9));
         
-        const tx = action === 'add' 
-          ? api.tx.subtensorModule.addStake(hotkey, taoAmountBigInt)
-          : api.tx.subtensorModule.removeStake(hotkey, stakeAmount);
+        let tx;
+        if (action === 'add') {
+          const taoAmountBigInt = BigInt(Math.floor(parseFloat(stakeAmount) * 1e9));
+          tx = api.tx.subtensorModule.addStake(hotkey, taoAmountBigInt);
+        } else if (action === 'remove') {
+          const taoAmountBigInt = BigInt(Math.floor(parseFloat(stakeAmount) * 1e9));
+          tx = api.tx.subtensorModule.removeStake(hotkey, taoAmountBigInt);
+        } else { // removeMax
+          tx = api.tx.subtensorModule.removeStake(hotkey, currentStake * 1e9);
+        }
 
         await tx.signAndSend(selectedAccount, { signer: injector.signer }, ({ status, dispatchError }) => {
           console.log('Transaction status:', status.toString());
@@ -94,6 +128,7 @@ export default function Home() {
             console.log(status.asFinalized.toString())
             // Refresh balance after staking action
             fetchBalance();
+            fetchStakeAmount();
           }
           if (dispatchError) {
             console.error(`Dispatch Error: ${dispatchError.toString()}`);
@@ -139,7 +174,7 @@ export default function Home() {
         )}
       </div>
       <div>
-        <h2 className="text-xl font-semibold mb-2">Stake Management</h2>
+        <h2 className="text-xl font-semibold mb-2">Delegate to Foundry</h2>
         <input
           type="text"
           placeholder="Hotkey"
@@ -147,6 +182,9 @@ export default function Home() {
           onChange={(e) => setHotkey(e.target.value)}
           className="border w-full rounded p-2 mr-2 mb-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
+        <div className="mb-2">
+          <p className="text-gray-700">Current Stake: {currentStake} τ</p>
+        </div>
         <div className="flex space-x-2">
         <input
           type="number"
@@ -166,6 +204,12 @@ export default function Home() {
             className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500"
           >
             Remove Stake
+          </button>
+          <button 
+            onClick={() => handleStakeAction('removeMax')} 
+            className="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600 focus:outline-none focus:ring-2 focus:ring-yellow-500"
+          >
+            Unstake Max Amount
           </button>
         </div>
       </div>
