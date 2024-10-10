@@ -1,6 +1,7 @@
-"use client";
+"use client"
 
 import React, { useState, useEffect } from 'react';
+import { Toaster, toast } from 'react-hot-toast';
 
 export default function Home() {
   const [status, setStatus] = useState<string>('Loading...');
@@ -13,6 +14,12 @@ export default function Home() {
   });
   const [stakeAmount, setStakeAmount] = useState<string>('');
   const [currentStake, setCurrentStake] = useState<number>(0);
+  const [loadingStates, setLoadingStates] = useState({
+    addStake: false,
+    removeStake: false,
+    removeMaxStake: false
+  });
+  const [stakeAmountError, setStakeAmountError] = useState<string>('');
 
   useEffect(() => {
     const initializeWallet = async () => {
@@ -36,6 +43,7 @@ export default function Home() {
       } catch (error) {
         console.error('Failed to initialize wallet:', error);
         setStatus('Failed to initialize wallet.');
+        toast.error('Failed to initialize wallet. Please check your extension.');
       }
     };
 
@@ -53,11 +61,12 @@ export default function Home() {
         if (res.isEmpty) {
           setCurrentStake(0);
         } else {
-          const amount = parseFloat(res.toString()) / 1000000000;
-          setCurrentStake(amount);
+          const amount = Number(res.toString()) / 1e9;
+          setCurrentStake(Number(amount.toFixed(9)));
         }
       } catch (error) {
         console.error('Error fetching stake amount:', error);
+        toast.error('Failed to fetch current stake amount.');
       }
     }
   };
@@ -68,22 +77,21 @@ export default function Home() {
         const { ApiPromise, WsProvider } = await import('@polkadot/api');
         const provider = new WsProvider('wss://test.finney.opentensor.ai:443');
         const api = await ApiPromise.create({ provider });
-
+  
         const accountInfo = await api.query.system.account(selectedAccount);
         const { data: { free } } = accountInfo;
-        const freeInTao = free.toBigInt() / BigInt(10 ** 9);
-        setBalance(`${freeInTao}`);
-        setStakeAmount(`${freeInTao}`); // Set default stake amount to balance
+        const freeInTao = Number(free.toBigInt()) / 1e9;
+        setBalance(freeInTao.toFixed(1)); 
+        setStakeAmount(freeInTao.toString());
       } catch (error) {
         console.error('Error fetching balance:', error);
         setBalance('Error fetching balance');
+        toast.error('Failed to fetch account balance.');
       }
     }
   };
 
   useEffect(() => {
-    fetchBalance()
-
     if (selectedAccount) {
       fetchBalance();
     }
@@ -99,8 +107,23 @@ export default function Home() {
     setSelectedAccount(accountAddress);
   };
 
+  const validateStakeAmount = (amount: string): boolean => {
+    const numAmount = parseFloat(amount);
+    if (isNaN(numAmount) || numAmount < 1) {
+      setStakeAmountError('Minimum stake amount is 1 TAO');
+      return false;
+    }
+    setStakeAmountError('');
+    return true;
+  };
+
   const handleStakeAction = async (action: 'add' | 'remove' | 'removeMax') => {
     if (selectedAccount && hotkey && stakeAmount) {
+      if (action !== 'removeMax' && !validateStakeAmount(stakeAmount)) {
+        toast.error('Invalid stake amount. Minimum stake is 1 TAO.');
+        return;
+      }
+      setLoadingStates(prev => ({ ...prev, [action === 'add' ? 'addStake' : action === 'remove' ? 'removeStake' : 'removeMaxStake']: true }));
       try {
         const { ApiPromise, WsProvider } = await import('@polkadot/api');
         const { web3FromAddress } = await import('@polkadot/extension-dapp');
@@ -123,25 +146,34 @@ export default function Home() {
 
         await tx.signAndSend(selectedAccount, { signer: injector.signer }, ({ status, dispatchError }) => {
           console.log('Transaction status:', status.toString());
-          if (status.isFinalized && !dispatchError) {
-            console.log(`Stake ${action === 'add' ? 'added' : 'removed'} successfully!`);
-            console.log(status.asFinalized.toString())
-            // Refresh balance after staking action
-            fetchBalance();
-            fetchStakeAmount();
-          }
-          if (dispatchError) {
-            console.error(`Dispatch Error: ${dispatchError.toString()}`);
+          if (status.isFinalized) {
+            if (!dispatchError) {
+              console.log(`Stake ${action === 'add' ? 'added' : 'removed'} successfully!`);
+              console.log(status.asFinalized.toString());
+              toast.success(`Stake ${action === 'add' ? 'added' : 'removed'} successfully!`);
+              // Refresh balance after staking action
+              fetchBalance();
+              fetchStakeAmount();
+            } else {
+              console.error(`Dispatch Error: ${dispatchError.toString()}`);
+              toast.error(`Failed to ${action === 'add' ? 'add' : 'remove'} stake. Please try again.`);
+            }
+            setLoadingStates(prev => ({ ...prev, [action === 'add' ? 'addStake' : action === 'remove' ? 'removeStake' : 'removeMaxStake']: false }));
           }
         });
       } catch (error) {
         console.error(`Error ${action === 'add' ? 'adding' : 'removing'} stake:`, error);
+        toast.error(`An error occurred while ${action === 'add' ? 'adding' : 'removing'} stake. Please try again.`);
+        setLoadingStates(prev => ({ ...prev, [action === 'add' ? 'addStake' : action === 'remove' ? 'removeStake' : 'removeMaxStake']: false }));
       }
     }
   };
 
+  const isAnyOperationLoading = Object.values(loadingStates).some(state => state);
+
   return (
     <div className="container mx-auto p-4">
+      <Toaster position="top-right" />
       <h1 className="text-2xl font-bold mb-4">Wallet Integration</h1>
       <div className="mb-4">
         <h2 className="text-xl font-semibold mb-2">Status</h2>
@@ -195,21 +227,24 @@ export default function Home() {
         />
           <button 
             onClick={() => handleStakeAction('add')} 
-            className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className={`bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 ${isAnyOperationLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={isAnyOperationLoading}
           >
-            Add Stake
+            {loadingStates.addStake ? 'Adding Stake...' : 'Add Stake'}
           </button>
           <button 
             onClick={() => handleStakeAction('remove')} 
-            className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500"
+            className={`bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 ${isAnyOperationLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={isAnyOperationLoading}
           >
-            Remove Stake
+            {loadingStates.removeStake ? 'Removing Stake...' : 'Remove Stake'}
           </button>
           <button 
             onClick={() => handleStakeAction('removeMax')} 
-            className="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600 focus:outline-none focus:ring-2 focus:ring-yellow-500"
+            className={`bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600 focus:outline-none focus:ring-2 focus:ring-yellow-500 ${isAnyOperationLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={isAnyOperationLoading}
           >
-            Unstake Max Amount
+            {loadingStates.removeMaxStake ? 'Unstaking Max...' : 'Unstake Max Amount'}
           </button>
         </div>
       </div>
